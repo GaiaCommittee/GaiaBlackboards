@@ -67,25 +67,6 @@ namespace Gaia::Blackboards
         }
 
         /**
-         * @brief Get the value.
-         * @param default_value The value to return if this accessor is not connected
-         *                      or the type of the value has changed.
-         * @return Value of the connected item,
-         *         or default_value if this accessor is not connected or
-         *         the type of the value has changed.
-         */
-        ValueType Get(ValueType default_value)
-        {
-            if (IsConnected &&
-                ItemIterator->second.has_value() && ItemIterator->second.type() == typeid(ValueType))
-            {
-                return std::any_cast<ValueType>(ItemIterator->second);
-            }
-
-            return default_value;
-        }
-
-        /**
          * @brief Set the value.
          * @param value The value to update.
          * @details This function will do noting if this accessor is not connected.
@@ -96,6 +77,27 @@ namespace Gaia::Blackboards
             {
                 ItemIterator->second = std::make_any<ValueType>(value);
             }
+        }
+
+        /**
+         * @brief Get the value.
+         * @param default_value The value to return if this accessor is not connected
+         *                      or the type of the value has changed.
+         * @return Value of the connected item,
+         *         or default_value if this accessor is not connected or
+         *         the type of the value has changed.
+         */
+        ValueType& Acquire(ValueType default_value)
+        {
+            if (IsConnected)
+            {
+                if (!ItemIterator->second.has_value() || ItemIterator->second.type() != typeid(ValueType))
+                {
+                    ItemIterator->second = std::make_any<ValueType>(std::move(default_value));
+                }
+                return *std::any_cast<ValueType>(&ItemIterator->second);
+            }
+            return default_value;
         }
     };
 }

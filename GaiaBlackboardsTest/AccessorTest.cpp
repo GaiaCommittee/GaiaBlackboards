@@ -11,8 +11,8 @@ TEST(AccessorTest, Basic)
     sample_blackboard.SetValue("SampleValue", 5);
 
     EXPECT_EQ(sample_accessor.Get(), std::nullopt);
-    EXPECT_EQ(sample_accessor.Get(2), 2);
-    EXPECT_EQ(sample_accessor.Get(3), 3);
+    EXPECT_EQ(sample_accessor.Acquire(2), 2);
+    EXPECT_EQ(sample_accessor.Acquire(3), 3);
 
     sample_accessor.Set(4);
 
@@ -22,7 +22,7 @@ TEST(AccessorTest, Basic)
 
     EXPECT_EQ(*sample_accessor.Get(), 5);
 
-    EXPECT_EQ(sample_accessor.Get(6), 5);
+    EXPECT_EQ(sample_accessor.Acquire(6), 5);
 
     sample_accessor.Set(7);
 
@@ -31,7 +31,7 @@ TEST(AccessorTest, Basic)
     sample_accessor.Disconnect();
 
     EXPECT_EQ(sample_accessor.Get(), std::nullopt);
-    EXPECT_EQ(sample_accessor.Get(8), 8);
+    EXPECT_EQ(sample_accessor.Acquire(8), 8);
 
     sample_accessor.Set(11);
 

@@ -90,30 +90,22 @@ namespace Gaia::Blackboards
          *         std::nullopt if it does not exist or does not fully match the demanded type.
          */
         template <typename ValueType>
-        ValueType GetValue(const std::string& name, ValueType default_value)
+        ValueType& AcquireValue(const std::string& name, ValueType default_value)
         {
             std::unique_lock lock(ValuesMutex);
             auto item_iterator = Values.find(name);
 
-            if (item_iterator != Values.end() &&
-                item_iterator->second.has_value() && item_iterator->second.type() == typeid(ValueType))
+            if (item_iterator == Values.end())
             {
-                /* Due to the manually type check, this function call should not throw std::bad_any_cast
-                   because of not matched types. */
-                return std::any_cast<ValueType>(item_iterator->second);
+                auto [inserted_iterator, inserted] = Values.emplace(name, default_value);
+                item_iterator = inserted_iterator;
             }
-            else
+            if (item_iterator->second.type() != typeid(ValueType))
             {
-                if (item_iterator == Values.end())
-                {
-                    Values.emplace(name, default_value);
-                }
-                else
-                {
-                    item_iterator->second = std::make_any<ValueType>(default_value);
-                }
-                return default_value;
+                item_iterator->second = std::make_any<ValueType>(default_value);
             }
+
+            return *std::any_cast<ValueType>(&item_iterator->second);
         }
 
         /**
@@ -152,7 +144,7 @@ namespace Gaia::Blackboards
          * @return The pointer to the value with the given name.
          */
         template <typename ValueType>
-        ValueType* GetReference(const std::string& name, ValueType default_value)
+        ValueType* AcquireReference(const std::string& name, ValueType default_value)
         {
             std::unique_lock lock(ValuesMutex);
             auto item_iterator = Values.find(name);

@@ -13,10 +13,10 @@ TEST(BlackboardTest, Basic)
     blackboard.SetValue("SampleValue", 1);
     EXPECT_EQ(*blackboard.GetValue<int>("SampleValue"), 1);
 
-    EXPECT_EQ(blackboard.GetValue("SampleValue2", 2), 2);
+    EXPECT_EQ(blackboard.AcquireValue("SampleValue2", 2), 2);
     EXPECT_EQ(blackboard.GetValue<long>("SampleValue2"), std::nullopt);
     EXPECT_EQ(blackboard.GetValue<bool>("SampleValue2"), std::nullopt);
-    EXPECT_EQ(blackboard.GetValue("SampleValue2", 3), 2);
+    EXPECT_EQ(blackboard.AcquireValue("SampleValue2", 3), 2);
 
     blackboard.RemoveValue("SampleValue");
     EXPECT_EQ(blackboard.GetValue<int>("SampleValue"), std::nullopt);

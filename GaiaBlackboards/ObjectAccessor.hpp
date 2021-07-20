@@ -23,9 +23,9 @@ namespace Gaia::Blackboards
         {
             if (this->IsConnected() &&
                 this->GetItemIterator()->second.has_value() &&
-                this->GetItemIterator()->ItemIterator->second.type() == typeid(ValueType))
+                this->GetItemIterator()->ItemIterator->second.type() == typeid(ObjectType))
             {
-                return std::any_cast<ValueType>(&this->ItemIterator->second);
+                return std::any_cast<ObjectType>(&this->ItemIterator->second);
             }
 
             return nullptr;

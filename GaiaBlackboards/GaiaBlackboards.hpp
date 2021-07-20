@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Blackboard.hpp"
-#include "Accessor.hpp"
+#include "ValueAccessor.hpp"
 
 namespace Gaia::Blackboards
 {}

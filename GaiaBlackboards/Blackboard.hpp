@@ -4,6 +4,7 @@
 #include <any>
 #include <string>
 #include <shared_mutex>
+#include <type_traits>
 
 namespace Gaia::Blackboards
 {
@@ -14,42 +15,46 @@ namespace Gaia::Blackboards
     {
         /// Friend class accessor for boosting query process.
         template <typename ValueType>
-        friend class Accessor;
+        friend class AccessorBase;
     protected:
-        /// Mutex for Values.
-        std::shared_mutex ValuesMutex;
+        /// Mutex for Items.
+        std::shared_mutex ItemsMutex;
         /// Map for key-values storage.
-        std::unordered_map<std::string, std::any> Values;
+        std::unordered_map<std::string, std::any> Items;
 
     public:
         /// Clear all values in this blackboard.
         void Clear();
 
         /// Remove the value with the given name.
-        void RemoveValue(const std::string& name);
+        void Remove(const std::string& name);
 
         /**
-         * @brief Add a value to this blackboard.
-         * @tparam ValueType The type of the value to add or replace.
-         * @param name The name of the value to add or replace.
-         * @param value The value to create or update.
-         * @details
-         *  The previous value with the same name will be replaced.
+         * @brief Set the value for the value item.
+         * @tparam ValueType Type of the value.
+         * @param name Name of the value item.
+         * @param value Value to set for the value item.
+         * @retval true Value node has been set or updated
+         * @retval false Value node with the same name already exists, and its type does not match the given type.
          */
         template <typename ValueType>
-        void SetValue(const std::string& name, ValueType value)
+        bool SetValue(const std::string& name, ValueType value)
         {
-            std::unique_lock lock(ValuesMutex);
-            auto item_iterator = Values.find(name);
+            std::unique_lock lock(ItemsMutex);
+            auto item_iterator = Items.find(name);
 
-            if (item_iterator != Values.end())
+            if (item_iterator == Items.end())
             {
-                item_iterator->second = std::make_any<ValueType>(value);
-            }
-            else
+                Items.emplace(name, std::make_any<ValueType>(value));
+                return true;
+
+            } if (item_iterator->second.type() == typeid(ValueType))
             {
-                Values.emplace(name, value);
+                item_iterator->second.emplace<ValueType>(value);
+                return true;
             }
+
+            return false;
         }
 
         /**
@@ -59,16 +64,26 @@ namespace Gaia::Blackboards
          *                   when it is firstly set in this blackboard.
          * @param name The name of the value to get.
          * @return Optional value with the given name,
-         *         std::nullopt if it does not exist or does not fully match the demanded type.
+         *         set and returns default value if it does not exists,
+         *         returns null if it does not fully match the demanded type.
          */
         template <typename ValueType>
-        std::optional<ValueType> GetValue(const std::string& name)
+        std::optional<ValueType> GetValue(const std::string& name,
+                                          std::optional<ValueType> default_value = std::nullopt)
         {
-            std::shared_lock lock(ValuesMutex);
-            auto item_iterator = Values.find(name);
+            std::shared_lock lock(ItemsMutex);
+            auto item_iterator = Items.find(name);
             lock.unlock();
 
-            if (item_iterator != Values.end() &&
+            if (item_iterator == Items.end() && default_value.has_value())
+            {
+                std::unique_lock lock_write(ItemsMutex);
+                Items.emplace(name, std::make_any<ValueType>(*default_value));
+                lock_write.unlock();
+                return default_value;
+            }
+
+            if (item_iterator != Items.end() &&
                 item_iterator->second.has_value() && item_iterator->second.type() == typeid(ValueType))
             {
                 /* Due to the manually type check, this function call should not throw std::bad_any_cast
@@ -80,37 +95,66 @@ namespace Gaia::Blackboards
         }
 
         /**
-         * @brief Get a value from this blackboard, or set it if it does not exist.
-         * @tparam ValueType The type of the value to get,
-         *                   it should be totally the same to the original type of the value
-         *                   when it is firstly set in this blackboard.
-         * @param name The name of the value to get.
-         * @param default_value The value to set if it does not exist.
-         * @return Optional value with the given name,
-         *         std::nullopt if it does not exist or does not fully match the demanded type.
+         * @brief Set the object instance for the object item via move construction.
+         * @tparam ValueType Type of the object.
+         * @param name Name of the object item.
+         * @param object_instance Instance to set for the value item.
+         * @retval true Object node has been set or updated
+         * @retval false Object node with the same name already exists, and its type does not match the given type.
          */
-        template <typename ValueType>
-        ValueType& AcquireValue(const std::string& name, ValueType default_value)
+        template <typename ObjectType,
+                typename = typename std::enable_if_t<std::is_move_constructible_v<ObjectType>>>
+        bool SetObject(const std::string& name, ObjectType&& object_instance)
         {
-            std::unique_lock lock(ValuesMutex);
-            auto item_iterator = Values.find(name);
+            std::unique_lock lock(ItemsMutex);
+            auto item_iterator = Items.find(name);
 
-            if (item_iterator == Values.end())
+            if (item_iterator == Items.end())
             {
-                auto [inserted_iterator, inserted] = Values.emplace(name, default_value);
-                item_iterator = inserted_iterator;
-            }
-            if (item_iterator->second.type() != typeid(ValueType))
+                Items.emplace(name, std::make_any<ObjectType>(std::move(object_instance)));
+                return true;
+
+            } if (item_iterator->second.type() == typeid(ObjectType))
             {
-                item_iterator->second = std::make_any<ValueType>(default_value);
+                item_iterator->second.emplace<ObjectType>(std::move(object_instance));
+                return true;
             }
 
-            return *std::any_cast<ValueType>(&item_iterator->second);
+            return false;
+        }
+
+        /**
+         * @brief Set the object instance for the object item via copy construction.
+         * @tparam ObjectType Type of the object.
+         * @param name Name of the object item.
+         * @param object_instance Instance to set for the value item.
+         * @retval true Object node has been set or updated
+         * @retval false Object node with the same name already exists, and its type does not match the given type.
+         */
+        template <typename ObjectType,
+                typename = typename std::enable_if_t<std::is_copy_constructible_v<ObjectType>>>
+        bool SetObject(const std::string& name, const ObjectType& object_instance)
+        {
+            std::unique_lock lock(ItemsMutex);
+            auto item_iterator = Items.find(name);
+
+            if (item_iterator == Items.end())
+            {
+                Items.emplace(name, std::make_any<ObjectType>(object_instance));
+                return true;
+
+            } if (item_iterator->second.type() == typeid(ObjectType))
+            {
+                item_iterator->second.emplace<ObjectType>(object_instance);
+                return true;
+            }
+
+            return false;
         }
 
         /**
          * @brief Get a pointer to the value with the given name.
-         * @tparam ValueType The type of the value to get,
+         * @tparam ObjectType The type of the value to get,
          *                   it should be totally the same to the original type of the value
          *                   when it is firstly set in this blackboard.
          * @param name The name of the value to get.
@@ -118,49 +162,29 @@ namespace Gaia::Blackboards
          *         nullptr if value with the demanded name does not exist,
          *         or its type can not fully match the demanded type.
          */
-        template <typename ValueType>
-        ValueType* GetReference(const std::string& name)
+        template <typename ObjectType>
+        ObjectType* GetObject(const std::string& name, std::optional<ObjectType> default_object = std::nullopt)
         {
-            std::shared_lock lock(ValuesMutex);
-            auto item_iterator = Values.find(name);
+            std::shared_lock lock(ItemsMutex);
+            auto item_iterator = Items.find(name);
             lock.unlock();
 
-            if (item_iterator != Values.end() &&
-                item_iterator->second.has_value() && item_iterator->second.type() == typeid(ValueType))
+            if (item_iterator == Items.end() && default_object.has_value())
+            {
+                std::unique_lock lock_write(ItemsMutex);
+                item_iterator = std::get<0>(
+                        Items.emplace(name, std::make_any<ObjectType>(*default_object)));
+                lock_write.unlock();
+                return std::any_cast<ObjectType>(&item_iterator->second);
+            }
+
+            if (item_iterator != Items.end() &&
+                item_iterator->second.has_value() && item_iterator->second.type() == typeid(ObjectType))
             {
                 /// Get the pointer of the value inside std::any container.
-                return std::any_cast<ValueType>(&item_iterator->second);
+                return std::any_cast<ObjectType>(&item_iterator->second);
             }
             return nullptr;
-        }
-
-        /**
-         * @brief Get a pointer to the value with the given name, or set it if it does not exist.
-         * @tparam ValueType The type of the value to get,
-         *                   it should be totally the same to the original type of the value
-         *                   when it is firstly set in this blackboard.
-         * @param name The name of the value to get.
-         * @param default_value The value to set if it does not exist.
-         * @return The pointer to the value with the given name.
-         */
-        template <typename ValueType>
-        ValueType* AcquireReference(const std::string& name, ValueType default_value)
-        {
-            std::unique_lock lock(ValuesMutex);
-            auto item_iterator = Values.find(name);
-
-            if (item_iterator == Values.end())
-            {
-                item_iterator = std::get<0>(
-                        Values.emplace(name, std::make_any<ValueType>(default_value)));
-            }
-            if (!item_iterator->second.has_value() || item_iterator->second.type() != typeid(ValueType))
-            {
-                item_iterator->second = std::make_any<ValueType>(default_value);
-            }
-
-            /// Get the pointer of the value inside std::any container.
-            return std::any_cast<ValueType>(&item_iterator->second);
         }
     };
 }

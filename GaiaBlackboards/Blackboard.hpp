@@ -45,7 +45,7 @@ namespace Gaia::Blackboards
 
             if (item_iterator == Items.end())
             {
-                Items.emplace(name, std::make_any<ValueType>(value));
+                Items.emplace(name, value);
                 return true;
 
             } if (item_iterator->second.type() == typeid(ValueType))
@@ -78,7 +78,7 @@ namespace Gaia::Blackboards
             if (item_iterator == Items.end() && default_value.has_value())
             {
                 std::unique_lock lock_write(ItemsMutex);
-                Items.emplace(name, std::make_any<ValueType>(*default_value));
+                Items.emplace(name, default_value.value());
                 lock_write.unlock();
                 return default_value;
             }
@@ -111,7 +111,7 @@ namespace Gaia::Blackboards
 
             if (item_iterator == Items.end())
             {
-                Items.emplace(name, std::make_any<ObjectType>(std::move(object_instance)));
+                Items.emplace(name, std::move(object_instance));
                 return true;
 
             } if (item_iterator->second.type() == typeid(ObjectType))
@@ -140,7 +140,7 @@ namespace Gaia::Blackboards
 
             if (item_iterator == Items.end())
             {
-                Items.emplace(name, std::make_any<ObjectType>(object_instance));
+                Items.emplace(name, std::move(object_instance));
                 return true;
 
             } if (item_iterator->second.type() == typeid(ObjectType))
@@ -173,7 +173,7 @@ namespace Gaia::Blackboards
             {
                 std::unique_lock lock_write(ItemsMutex);
                 item_iterator = std::get<0>(
-                        Items.emplace(name, std::make_any<ObjectType>(*default_object)));
+                        Items.emplace(name, default_object.value()));
                 lock_write.unlock();
                 return std::any_cast<ObjectType>(&item_iterator->second);
             }

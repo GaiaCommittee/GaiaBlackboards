@@ -24,167 +24,69 @@ namespace Gaia::Blackboards
 
     public:
         /// Clear all values in this blackboard.
-        void Clear();
+        void ClearItems();
 
         /// Remove the value with the given name.
-        void Remove(const std::string& name);
+        void RemoveItem(const std::string& name);
+
+        /// Check whether item with the given name exist or not.
+        bool HasItem(const std::string& name);
 
         /**
-         * @brief Set the value for the value item.
-         * @tparam ValueType Type of the value.
-         * @param name Name of the value item.
-         * @param value Value to set for the value item.
-         * @retval true Value node has been set or updated
-         * @retval false Value node with the same name already exists, and its type does not match the given type.
+         * @brief Get or create a variable on the blackboard.
+         * @tparam VariableType Type of the variable.
+         * @tparam ConstructorArguments Type of arguments for the variable constructor.
+         * @param name Name of the variable.
+         * @param arguments Arguments to pass to the constructor of the variable.
+         * @return Pointer to the variable.
          */
-        template <typename ValueType>
-        bool SetValue(const std::string& name, ValueType value)
+        template <typename VariableType, typename... ConstructorArguments>
+        VariableType* GetVariable(const std::string& name, ConstructorArguments... arguments)
         {
-            std::unique_lock lock(ItemsMutex);
-            auto item_iterator = Items.find(name);
+            std::shared_lock lock_searching(ItemsMutex);
+            auto item_finder = Items.find(name);
+            lock_searching.unlock();
 
-            if (item_iterator == Items.end())
+            if (item_finder == Items.end())
             {
-                Items.emplace(name, value);
-                return true;
-
-            } if (item_iterator->second.type() == typeid(ValueType))
-            {
-                item_iterator->second.emplace<ValueType>(value);
-                return true;
+                std::unique_lock lock_editing(ItemsMutex);
+                item_finder = std::get<0>(Items.template emplace(name, std::make_any<VariableType>(arguments...)));
+                lock_editing.unlock();
             }
-
-            return false;
+            try{
+                return std::any_cast<VariableType>(&item_finder->second);
+            } catch (std::bad_any_cast&){
+                return nullptr;
+            }
         }
 
         /**
-         * @brief Get a value from this blackboard.
-         * @tparam ValueType The type of the value to get,
-         *                   it should be totally the same to the original type of the value
-         *                   when it is firstly set in this blackboard.
-         * @param name The name of the value to get.
-         * @return Optional value with the given name,
-         *         set and returns default value if it does not exists,
-         *         returns null if it does not fully match the demanded type.
-         */
-        template <typename ValueType>
-        std::optional<ValueType> GetValue(const std::string& name,
-                                          std::optional<ValueType> default_value = std::nullopt)
-        {
-            std::shared_lock lock(ItemsMutex);
-            auto item_iterator = Items.find(name);
-            lock.unlock();
-
-            if (item_iterator == Items.end() && default_value.has_value())
-            {
-                std::unique_lock lock_write(ItemsMutex);
-                Items.emplace(name, default_value.value());
-                lock_write.unlock();
-                return default_value;
-            }
-
-            if (item_iterator != Items.end() &&
-                item_iterator->second.has_value() && item_iterator->second.type() == typeid(ValueType))
-            {
-                /* Due to the manually type check, this function call should not throw std::bad_any_cast
-                   because of not matched types. */
-                return std::any_cast<ValueType>(item_iterator->second);
-            }
-
-            return std::nullopt;
-        }
-
-        /**
-         * @brief Set the object instance for the object item via move construction.
-         * @tparam ValueType Type of the object.
-         * @param name Name of the object item.
-         * @param object_instance Instance to set for the value item.
-         * @retval true Object node has been set or updated
-         * @retval false Object node with the same name already exists, and its type does not match the given type.
-         */
-        template <typename ObjectType,
-                typename = typename std::enable_if_t<std::is_move_constructible_v<ObjectType>>>
-        bool SetObject(const std::string& name, ObjectType&& object_instance)
-        {
-            std::unique_lock lock(ItemsMutex);
-            auto item_iterator = Items.find(name);
-
-            if (item_iterator == Items.end())
-            {
-                Items.emplace(name, std::move(object_instance));
-                return true;
-
-            } if (item_iterator->second.type() == typeid(ObjectType))
-            {
-                item_iterator->second.emplace<ObjectType>(std::move(object_instance));
-                return true;
-            }
-
-            return false;
-        }
-
-        /**
-         * @brief Set the object instance for the object item via copy construction.
+         * @brief Get or create an object on the blackboard.
          * @tparam ObjectType Type of the object.
-         * @param name Name of the object item.
-         * @param object_instance Instance to set for the value item.
-         * @retval true Object node has been set or updated
-         * @retval false Object node with the same name already exists, and its type does not match the given type.
+         * @tparam ConstructorArguments Type of arguments for the object constructor.
+         * @param name Name of the variable.
+         * @param arguments Arguments to pass to the constructor of the variable.
+         * @return Pointer to the object.
          */
-        template <typename ObjectType,
-                typename = typename std::enable_if_t<std::is_copy_constructible_v<ObjectType>>>
-        bool SetObject(const std::string& name, const ObjectType& object_instance)
+        template <typename ObjectType, typename... ConstructorArguments>
+        ObjectType* GetObject(const std::string& name, ConstructorArguments... arguments)
         {
-            std::unique_lock lock(ItemsMutex);
-            auto item_iterator = Items.find(name);
+            std::shared_lock lock_searching(ItemsMutex);
+            auto item_finder = Items.find(name);
+            lock_searching.unlock();
 
-            if (item_iterator == Items.end())
+            if (item_finder == Items.end())
             {
-                Items.emplace(name, std::move(object_instance));
-                return true;
-
-            } if (item_iterator->second.type() == typeid(ObjectType))
-            {
-                item_iterator->second.emplace<ObjectType>(object_instance);
-                return true;
+                std::unique_lock lock_editing(ItemsMutex);
+                item_finder = std::get<0>(Items.template emplace(name,
+                        std::make_shared<ObjectType>(arguments...)));
+                lock_editing.unlock();
             }
-
-            return false;
-        }
-
-        /**
-         * @brief Get a pointer to the value with the given name.
-         * @tparam ObjectType The type of the value to get,
-         *                   it should be totally the same to the original type of the value
-         *                   when it is firstly set in this blackboard.
-         * @param name The name of the value to get.
-         * @return The pointer to the value with the given name,
-         *         nullptr if value with the demanded name does not exist,
-         *         or its type can not fully match the demanded type.
-         */
-        template <typename ObjectType>
-        ObjectType* GetObject(const std::string& name, std::optional<ObjectType> default_object = std::nullopt)
-        {
-            std::shared_lock lock(ItemsMutex);
-            auto item_iterator = Items.find(name);
-            lock.unlock();
-
-            if (item_iterator == Items.end() && default_object.has_value())
-            {
-                std::unique_lock lock_write(ItemsMutex);
-                item_iterator = std::get<0>(
-                        Items.emplace(name, default_object.value()));
-                lock_write.unlock();
-                return std::any_cast<ObjectType>(&item_iterator->second);
+            try{
+                return std::any_cast<std::shared_ptr<ObjectType>>(&item_finder->second)->get();
+            } catch (std::bad_any_cast&){
+                return nullptr;
             }
-
-            if (item_iterator != Items.end() &&
-                item_iterator->second.has_value() && item_iterator->second.type() == typeid(ObjectType))
-            {
-                /// Get the pointer of the value inside std::any container.
-                return std::any_cast<ObjectType>(&item_iterator->second);
-            }
-            return nullptr;
         }
     };
 }

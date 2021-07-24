@@ -23,6 +23,10 @@ namespace Gaia::Blackboards
         std::unordered_map<std::string, std::any> Items;
 
     public:
+        /// Shared auto pointer type for item access.
+        template <typename VariableType>
+        using Pointer = std::shared_ptr<VariableType>;
+
         /// Clear all values in this blackboard.
         void ClearItems();
 
@@ -33,15 +37,16 @@ namespace Gaia::Blackboards
         bool HasItem(const std::string& name);
 
         /**
-         * @brief Get or create a variable on the blackboard.
-         * @tparam VariableType Type of the variable.
-         * @tparam ConstructorArguments Type of arguments for the variable constructor.
-         * @param name Name of the variable.
-         * @param arguments Arguments to pass to the constructor of the variable.
-         * @return Pointer to the variable.
+         * @brief Get the item as the shared auto pointer of the given type.
+         * @tparam VariableType Type of the variable insides shared pointer.
+         * @tparam ConstructorArguments Type of arguments for variable constructor.
+         * @param name Name of the item to get.
+         * @param arguments Arguments for variable constructor.
+         * @return Shared auto pointer to the desired item, or nullptr if item exists but
+         *         mismatches in variable type.
          */
         template <typename VariableType, typename... ConstructorArguments>
-        VariableType* GetVariable(const std::string& name, ConstructorArguments... arguments)
+        Pointer<VariableType> GetItem(const std::string& name, ConstructorArguments... arguments)
         {
             std::shared_lock lock_searching(ItemsMutex);
             auto item_finder = Items.find(name);
@@ -50,42 +55,14 @@ namespace Gaia::Blackboards
             if (item_finder == Items.end())
             {
                 std::unique_lock lock_editing(ItemsMutex);
-                item_finder = std::get<0>(Items.template emplace(name, std::make_any<VariableType>(arguments...)));
+                item_finder = std::get<0>(Items.template emplace(name, std::any()));
+                item_finder->second = std::make_shared<VariableType>(arguments...);
                 lock_editing.unlock();
             }
             try{
-                return std::any_cast<VariableType>(&item_finder->second);
+                return std::any_cast<Pointer<VariableType>>(item_finder->second);
             } catch (std::bad_any_cast&){
-                return nullptr;
-            }
-        }
-
-        /**
-         * @brief Get or create an object on the blackboard.
-         * @tparam ObjectType Type of the object.
-         * @tparam ConstructorArguments Type of arguments for the object constructor.
-         * @param name Name of the variable.
-         * @param arguments Arguments to pass to the constructor of the variable.
-         * @return Pointer to the object.
-         */
-        template <typename ObjectType, typename... ConstructorArguments>
-        ObjectType* GetObject(const std::string& name, ConstructorArguments... arguments)
-        {
-            std::shared_lock lock_searching(ItemsMutex);
-            auto item_finder = Items.find(name);
-            lock_searching.unlock();
-
-            if (item_finder == Items.end())
-            {
-                std::unique_lock lock_editing(ItemsMutex);
-                item_finder = std::get<0>(Items.template emplace(name,
-                        std::make_shared<ObjectType>(arguments...)));
-                lock_editing.unlock();
-            }
-            try{
-                return std::any_cast<std::shared_ptr<ObjectType>>(&item_finder->second)->get();
-            } catch (std::bad_any_cast&){
-                return nullptr;
+                return {nullptr};
             }
         }
     };

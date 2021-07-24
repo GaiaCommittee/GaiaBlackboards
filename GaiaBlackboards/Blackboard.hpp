@@ -65,5 +65,20 @@ namespace Gaia::Blackboards
                 return {nullptr};
             }
         }
+
+        /**
+         * @brief Get the item as the raw pointer of the given type.
+         * @tparam VariableType Type of the variable insides shared pointer.
+         * @tparam ConstructorArguments Type of arguments for variable constructor.
+         * @param name Name of the item to get.
+         * @param arguments Arguments for variable constructor.
+         * @return Raw pointer to the desired item, or nullptr if item exists but
+         *         mismatches in variable type.
+         */
+        template <typename VariableType, typename... ConstructorArguments>
+        VariableType* GetPointer(const std::string& name, ConstructorArguments... arguments)
+        {
+            return GetItem<VariableType>(name, arguments...).get();
+        }
     };
 }
